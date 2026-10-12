@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleApi } from './guide.mjs';
+import { startWorldServer } from './runtime.mjs';
 
 const root=fileURLToPath(new URL('../dist/',import.meta.url));
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
@@ -20,6 +21,12 @@ export const server=http.createServer(async(req,res)=>{
     res.end(req.method==='HEAD'?undefined:data);
   }catch{res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'});res.end('未找到文件，请从应用主页进入。');}
 });
-const port=Number(process.env.PORT||4173);
-server.listen(port,'127.0.0.1',()=>console.log(`Echo Atlas is ready: http://127.0.0.1:${port}`));
-server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`端口 ${port} 已被占用，请关闭先前启动的应用或设置 PORT。`:e.message);process.exitCode=1;});
+try {
+  const result = await startWorldServer(server, process.env.PORT || 4173);
+  console.log(`${result.reused ? 'Echo Atlas is already running' : 'Echo Atlas is ready'}: ${result.url}`);
+  if (process.send) process.send({ type: 'ready', ...result });
+  if (result.reused && process.connected) process.disconnect();
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}

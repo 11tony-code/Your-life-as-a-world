@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { APP_ID } from './runtime.mjs';
 
 const envPath=fileURLToPath(new URL('../.env',import.meta.url));
 if(existsSync(envPath)) { try { process.loadEnvFile(envPath); } catch { /* Local mode remains available. */ } }
@@ -20,7 +21,7 @@ export function validateModelResult(value,facts) {
 }
 export async function handleApi(req,res) {
   const route=(req.url||'').split('?')[0];
-  if(req.method==='GET'&&route==='/api/health')return json(res,200,{aiConfigured:Boolean(process.env.AI_API_KEY),model:process.env.AI_API_KEY?(process.env.AI_MODEL||'deepseek-chat'):null});
+  if(req.method==='GET'&&route==='/api/health')return json(res,200,{app:APP_ID,aiConfigured:Boolean(process.env.AI_API_KEY),model:process.env.AI_API_KEY?(process.env.AI_MODEL||'deepseek-chat'):null});
   if(route!=='/api/guide')return json(res,404,{error:'接口不存在'});
   if(req.method!=='POST')return json(res,405,{error:'请使用 POST'});
   const origin=req.headers.origin;

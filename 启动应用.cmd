@@ -3,7 +3,7 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
 echo Echo Atlas
-echo Keep this window open while using the application.
+echo Starting the application...
 where node >nul 2>nul
 if errorlevel 1 goto fallback
 node "scripts\launch.mjs"
