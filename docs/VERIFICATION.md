@@ -43,6 +43,19 @@
 
 截图：`screenshots/overview.jpg`、`islands.jpg`、`song-detail.jpg`；实际导出图像为 `world-postcard.png`。
 
+## GitHub Pages 上线验证
+
+2026-10-13 已发布至 [回声群岛在线版](https://11tony-code.github.io/Your-life-as-a-world/)，启用 HTTPS 和主分支更新后的自动发布。首次发布工作流 [38284652813](https://github.com/11tony-code/Your-life-as-a-world/actions/runs/38284652813) 成功。
+
+- 正式网址公开访问返回 HTTP 200。
+- Edge 中二维地图与三维群岛均正常显示 500 首歌曲、六个章节；三维模块可在仓库子路径正确加载。
+- 本地导览「最高地标」正确定位 No Surprises：299 次、最后播放 2020-11-07。
+- 检查线上控制台未发现 error；静态构建未保留模型健康接口请求。
+- 已停止本地验证服务，线上视图与导览继续工作，访问不依赖本机 Node 进程。
+- 线上截图保存为 `screenshots/github-pages-2d.png` 和 `screenshots/github-pages-3d.png`。
+
+在线版提供浏览器内的本地导览；可选模型代理保留在本地 Node 版本中。
+
 ## 尚未执行的验证
 
 - 未提供模型 API 密钥，未执行真实付费模型调用。可选模型代理的边界与回退逻辑已测试，默认本地导览已实际操作。
