@@ -57,4 +57,4 @@
 
 ## 演示与交付
 
-Windows 已编译文件夹可双击 `启动应用.cmd`；源码在指定仓库。演示路线见 `DEMO.md`，自动测试与浏览器验证见 `VERIFICATION.md`。GitHub Pages 工作流为手动运行，静态发布不需要模型服务。
+Windows 已编译文件夹可双击 `启动应用.cmd`；源码在指定仓库。演示路线见 `DEMO.md`，自动测试与浏览器验证见 `VERIFICATION.md`。GitHub Pages 在主分支更新后自动编译、测试并发布，也可手动触发；静态发布不需要模型服务。

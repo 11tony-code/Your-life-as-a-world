@@ -6,7 +6,7 @@ export default function Guide({world,memories,onNavigate,onNotice}) {
   const [query,setQuery]=useState(''),[reply,setReply]=useState(null),[busy,setBusy]=useState(false),[online,setOnline]=useState(false),[health,setHealth]=useState({aiConfigured:false}),[expanded,setExpanded]=useState(()=>innerWidth>760);
   const generation=useRef(0);
   useEffect(()=>{generation.current++;setReply(null);setQuery('');setBusy(false);},[world]);
-  useEffect(()=>{let active=true;fetch('./api/health').then(r=>r.ok?r.json():{}).then(data=>{if(active)setHealth(data);}).catch(()=>{});return()=>{active=false;};},[]);
+  useEffect(()=>{if(import.meta.env.VITE_STATIC_SITE==='true')return;let active=true;fetch('./api/health').then(r=>r.ok?r.json():{}).then(data=>{if(active)setHealth(data);}).catch(()=>{});return()=>{active=false;};},[]);
   async function submit(value=query){
     if(busy||!value.trim())return;const version=generation.current;setBusy(true);setQuery('');setExpanded(true);
     let answer=localGuide(value,world,memories),failure=false;

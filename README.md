@@ -4,6 +4,8 @@
 
 **BNBU Programming Contest · AI Track / Your Life as a World**
 
+**在线体验：[回声群岛](https://11tony-code.github.io/Your-life-as-a-world/)** · 无需安装、无需登录。
+
 把歌单中的 500 个音乐碎片变成可以亲自探索的世界：一座深色发光的二维城市，以及一片可以旋转的三维群岛。每首歌是一个光点或岛屿；同一艺人的声音在空间里相聚，跨年份的声音形成桥梁，你的笔记则让统计拥有自己的故事。
 
 ![二维回声之城](screenshots/overview.jpg)
@@ -90,7 +92,9 @@ No Surprises,Radiohead,梦幻流行,299,2020-11-07
 
 源码包含自动测试 / 编译的 GitHub Actions。编译产物可从 CI 的 `echo-atlas-web` artifact 下载。
 
-GitHub Pages 发布工作流只在手动点击时运行：仓库 Settings → Pages → Source 选择 GitHub Actions，再运行 Actions 中的 **Publish to GitHub Pages (manual)**。静态托管可用两种世界、本地导览、导入与备份；在线模型需要另行运行 Node 服务。没有将密钥放入 Pages 的设计。
+GitHub Pages 使用 **Deploy to GitHub Pages** 工作流：推送到 `main` 后自动编译、测试并发布，也可以在 Actions 中手动运行。仓库 Settings → Pages → Source 使用 GitHub Actions。静态托管可用两种世界、本地导览、导入与备份；在线模型需要另行运行 Node 服务。没有将密钥放入 Pages 的设计。
+
+Pages 工作流使用 `VITE_STATIC_SITE=true` 构建，静态版不会请求未托管的模型健康接口。普通 `npm run build` 仍保留本地 Node 服务的可选在线模型功能。
 
 也可把 `dist/` 放到任何静态服务器的子路径；资源使用相对路径。请通过 HTTP 打开，直接双击 `dist/index.html` 不支持 ES 模块加载。
 
