@@ -1,0 +1,11 @@
+{
+  "source": "Apple iTunes Search API, HK, term=光年之外 鄧紫棋",
+  "retrieved_at": "2026-10-13",
+  "note": "Real catalog metadata for the reported mismatch. Preview URLs are replaced by controlled URLs in tests; no recording is stored.",
+  "results": [
+    {"kind":"song","trackId":6772898598,"artistId":425208570,"artistName":"鄧紫棋","trackName":"光年之外","collectionName":"嗨,唱起來 第5期 - EP","releaseDate":"2018-05-25T12:00:00Z","trackViewUrl":"https://music.apple.com/hk/album/6772898597?i=6772898598","hasPreview":true},
+    {"kind":"song","trackId":1818539844,"artistId":425208570,"artistName":"鄧紫棋","trackName":"光年之外 (G.E.M.重生版)","collectionName":"I AM GLORIA","releaseDate":"2025-06-12T12:00:00Z","trackViewUrl":"https://music.apple.com/hk/album/1818539834?i=1818539844","hasPreview":true},
+    {"kind":"song","trackId":1445565891,"artistId":425208570,"artistName":"鄧紫棋","trackName":"光年之外 (feat. 艾熱) [熱愛版]","collectionName":"光年之外 (feat. 艾熱)[熱愛版] - Single","releaseDate":"2018-12-10T12:00:00Z","trackViewUrl":"https://music.apple.com/hk/album/1445565881?i=1445565891","hasPreview":true},
+    {"kind":"song","trackId":1190070744,"artistId":425208570,"artistName":"鄧紫棋","trackName":"光年之外 (電影《Passengers》中國區主題曲)","collectionName":"光年之外 (電影《Passengers》中國區主題曲) - Single","releaseDate":"2016-12-30T12:00:00Z","trackViewUrl":"https://music.apple.com/hk/album/1190070714?i=1190070744","hasPreview":true}
+  ]
+}

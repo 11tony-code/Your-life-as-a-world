@@ -9,10 +9,13 @@ export const STORE_NAMES={HK:'香港',TW:'台湾',US:'美国'};
 
 function titleIdentity(value){
   let base=String(value||'').normalize('NFKC').trim(), live=false, explicitCover=false;
-  const references=[];
+  const references=[],credits=[];
   function annotation(text){
     text=simplify(text).trim();
     if(/^(?:live\b|现场(?:版|录音)?)/iu.test(text)){live=true;return true;}
+    // A named film/series credit describes where the song was used. Do not
+    // remove arbitrary subtitles, featured artists or alternate editions.
+    if(/^(?:电影|电视剧|网剧|动画|纪录片)\s*(?:《[^《》]+》|「[^「」]+」|“[^“”]+”|"[^"]+")\s*(?:中国区|台湾区|香港区|中文版)?\s*(?:主题曲|片头曲|片尾曲|插曲|推广曲)$/u.test(text)){credits.push(text);return true;}
     const cover=text.match(/^(cover(?:\s+(?:of|by))?|翻唱(?:版)?|原唱(?:者)?|original(?:ly performed by| artist))\s*[:：]?\s*(.*)$/iu);
     if(!cover)return false;
     if(/^(?:cover|翻唱)/iu.test(cover[1]))explicitCover=true;
@@ -26,12 +29,12 @@ function titleIdentity(value){
   }
   const dash=base.match(/\s+[-–—]\s+(live\b.*|现场.*|cover\b.*|翻唱.*|原唱.*)$/iu);
   if(dash&&annotation(dash[1]))base=base.slice(0,dash.index).trim();
-  return {base,identity:normalized(base),live,explicitCover,references};
+  return {base,identity:normalized(base),live,explicitCover,references,credits};
 }
 
 function liveAlbum(value){
   const name=simplify(String(value||'').normalize('NFKC'));
-  return /^live\s*$|\blive\s+(?:at|in|from|on)\b|[([【]\s*live\b|\s[-–—]\s*live\b|现场(?:版|录音|专辑|演唱会)/iu.test(name);
+  return /^live\s*$|\blive\s+(?:at|in|from|on)\b|[([【]\s*live\b|\s[-–—]\s*live\b|现场(?:版|录音|专辑|演唱会)|演唱会/iu.test(name);
 }
 
 function appleURL(value,preview=false){
@@ -59,19 +62,20 @@ function classifiedCandidates(song,results,excludedURLs=[]){
     const markedCover=title.explicitCover||albumCover;
     let version='unknown';
     const ambiguous=/\bunplugged\b|\bacoustic\b|\bkaraoke\b|\binstrumental\b|\bremix\b|伴奏|卡拉|纯音乐/iu.test(albumText);
+    const programme=/第\s*[\d一二三四五六七八九十百零〇两]+\s*(?:期|季)|\b(?:episode|season)\s+\d+\b/iu.test(albumText);
     const backing=/\bkaraoke\b|\binstrumental\b|伴奏|卡拉|纯音乐/iu.test(albumText);
-    if(!backing&&sameArtist&&!markedCover&&!title.references.some(name=>name!==artist)&&(!ambiguous||isLive))version=isLive?'live':'original';
+    if(!backing&&sameArtist&&!markedCover&&!title.references.some(name=>name!==artist)&&(!(ambiguous||programme)||isLive))version=isLive?'live':'original';
     else if(!backing&&!sameArtist&&coverLinked)version='cover';
     let url=appleURL(item.previewUrl,true);if(excluded.has(url))url=null;
     const releaseDate=/^\d{4}-\d{2}-\d{2}T/.test(String(item.releaseDate||''))?item.releaseDate.slice(0,10):'';
     const identityEvidence=direct?'艺人署名与目标一致（支持简繁）':`地区署名“${item.artistName}”与“${artistIds.get(item.artistId)}”使用同一 Apple 艺人 ID ${item.artistId}`;
-    const description=version==='unknown'?'标题相同，但艺人身份或翻唱关系不能核实；无法确认版本':
+    const description=version==='unknown'?(sameArtist&&programme&&!isLive?'歌名与艺人匹配，但专辑是分期节目且未明确标注录音版本；无法确认版本':'歌名匹配，但艺人身份、翻唱关系或录音版本不能核实；无法确认版本'):
       version==='cover'?`标题相同，曲目或专辑明确关联目标艺人的翻唱 / 原唱署名；演唱者为 ${item.artistName}`:
       `${identityEvidence}；${isLive?'曲目或专辑含 Live / 现场标记':'曲目与专辑没有 Live 或翻唱标记'}`;
     return [{type:'preview',version,url:version==='unknown'?null:url,storeUrl,trackId:item.trackId,artistId:item.artistId,
       trackName:String(item.trackName),artistName:String(item.artistName),collectionName:album,releaseDate,
       storefront:STORE_NAMES[item.storefront]?item.storefront:null,live:isLive,
-      evidence:`${description}${album?`；专辑《${album}》`:''}${releaseDate?`，发行 ${releaseDate}`:''}。`}];
+      evidence:`${description}${title.credits.length?`；标题附带影视使用说明“${title.credits.join('；')}”`:''}${album?`；专辑《${album}》`:''}${releaseDate?`，发行 ${releaseDate}`:''}。`}];
   });
 }
 

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {matchPreview,resolvePreview,fetchPreview,createPreviewRequests,createSearchBudget} from '../src/data/preview.js';
 import {previewHint,missingPreview} from '../src/data/preview-report.js';
 
@@ -76,6 +77,46 @@ test('original priority also applies to a playlist Live title, with explicit stu
 test('studio identity rejects explicit cover, ambiguous acoustic metadata and backing tracks',()=>{
   for(const album of ['Karaoke','Instrumental','Acoustic Sessions','Unplugged','伴奏精选'])assert.equal(resolvePreview(song,[track({collectionName:album})]).url,null);
   assert.equal(resolvePreview(song,[track({trackName:'光 (Cover)',collectionName:'Cover Sessions'})]).url,null);
+});
+
+test('reported 光年之外 catalog selects the 2016 film-theme single over a plain-title programme recording',()=>{
+  const snapshot=JSON.parse(readFileSync(new URL('./fixtures/light-years-catalog.json',import.meta.url),'utf8'));
+  const records=snapshot.results.map(i=>({...i,previewUrl:`https://audio-ssl.itunes.apple.com/controlled-${i.trackId}.m4a`}));
+  const target={title:'光年之外',artist:'邓紫棋'};
+  const result=resolvePreview(target,records);
+  assert.equal(result.version,'original');assert.equal(result.trackId,1190070744);assert.equal(result.releaseDate,'2016-12-30');
+  assert.match(result.evidence,/影视使用说明.*电影《Passengers》中国区主题曲/);
+  assert.equal(resolvePreview(target,[...records].reverse()).trackId,1190070744);
+  for(const record of records.slice(1,3))assert.equal(resolvePreview(target,[record]).url,null);
+});
+
+test('unmarked programme episodes cannot be called originals, while explicit Live evidence allows live fallback',()=>{
+  for(const album of ['嗨,唱起來 第5期 - EP','某节目 第十二季','Music Show, Episode 5','Music Show Season 2']){
+    const result=resolvePreview(song,[track({collectionName:album})]);
+    assert.equal(result.version,'unknown');assert.equal(result.url,null);assert.match(result.evidence,/分期节目.*无法确认版本/);
+    assert.match(result.hint,/^未找到目标歌曲《光》的原唱音频/);
+    assert.equal(resolvePreview(song,[track({collectionName:album,trackName:'光 (Live)'})]).version,'live');
+  }
+});
+
+test('only bounded screen-use credits may be removed; semantic, duet and rerecorded subtitles remain distinct',()=>{
+  assert.equal(resolvePreview(song,[track({trackName:'光（电影《某片》主题曲）'})]).version,'original');
+  assert.equal(resolvePreview({...song,title:'光（电视剧《某剧》片尾曲）'},[track()]).version,'original');
+  for(const suffix of ['Part 1','G.E.M.重生版','feat. 艾熱','熱愛版','电影《某片》主题曲 Remix','电影《某片》主题曲 翻唱']){
+    assert.equal(resolvePreview(song,[track({trackName:`光 (${suffix})`})]).url,null);
+  }
+  assert.equal(resolvePreview(song,[track({trackName:'光 (电影《某片》主题曲) (Live)'})]).version,'live');
+  assert.equal(resolvePreview(song,[track({artistName:'别人',artistId:88,trackName:'光 (电影《某片》主题曲)'})]).url,null);
+});
+
+test('an unavailable film-theme single permits live fallback without selecting an unmarked programme',()=>{
+  const result=resolvePreview(song,[track({collectionName:'某节目 第5期'}),track({trackName:'光 (电影《某片》主题曲)',previewUrl:''}),live()]);
+  assert.equal(result.version,'live');assert.equal(result.trackId,124);assert.match(result.hint,/^未找到目标歌曲《光》的原唱音频。.*live 版/);
+});
+
+test('concert album metadata classifies a plain-title performance as live rather than original',()=>{
+  const result=resolvePreview(song,[track({collectionName:'某地跨年演唱會'})]);
+  assert.equal(result.version,'live');assert.match(result.hint,/未找到.*原唱音频.*live 版/);
 });
 
 test('unavailable original preview permits evidenced fallback and reports missing original audio',()=>{
