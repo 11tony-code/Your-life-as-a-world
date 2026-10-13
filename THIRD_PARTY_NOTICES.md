@@ -7,8 +7,9 @@
 | PixiJS | 8.22.0 | 二维地图渲染 | https://pixijs.com/ |
 | Three.js | 0.186.1 | 三维岛屿与 OrbitControls | https://threejs.org/ |
 | Lucide React | 1.55.0 | 基础界面图标 | https://lucide.dev/ |
+| opencc-js | 1.4.2 | 中文元数据的简繁转换，按需加载 | https://github.com/nk2028/opencc-js |
 
-精确依赖和传递依赖见 `package-lock.json`，完整许可证汇集在 `THIRD_PARTY_LICENSES.txt`。React、Vite、PixiJS、Three.js 为 MIT；Lucide 为 ISC。代码生成的图形为本项目新增内容，基础图标使用 Lucide。构建工具所需的传递依赖没有作为本项目原创内容声明。
+精确依赖和传递依赖见 `package-lock.json`，完整许可证汇集在 `THIRD_PARTY_LICENSES.txt`。React、Vite、PixiJS、Three.js 为 MIT；Lucide 为 ISC；opencc-js 代码为 MIT，其 OpenCC 字典数据为 Apache-2.0，许可文本均已附上。代码生成的图形为本项目新增内容，基础图标使用 Lucide。构建工具所需的传递依赖没有作为本项目原创内容声明。
 
 二维光晕、纹理、明信片和三维几何均由本项目代码生成；截图为本应用的实际运行界面。环境音通过 Web Audio 合成。没有使用音乐封面或第三方字体。
 

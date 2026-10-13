@@ -4,7 +4,8 @@ import World2D from './world/World2D.jsx';
 import Guide from './components/Guide.jsx';
 import Modal from './components/Modal.jsx';
 import SongAudio from './components/SongAudio.jsx';
-import {createPreviewRequests} from './data/preview.js';
+import {createPreviewRequests} from './data/preview-requests.js';
+import {missingPreview} from './data/preview-report.js';
 import sourceSongs from './data/playlist.json';
 import {buildWorld,parsePlaylist,filterSongs,dormancy,num} from './data/engine.js';
 import {readStore,writeStore,download,csvFor,exportPostcard} from './data/storage.js';
@@ -17,7 +18,7 @@ export default function App(){
   const [mode,setMode]=useState('2d'),[tab,setTab]=useState('chapters'),[sidebar,setSidebar]=useState(()=>innerWidth>=1000),[query,setQuery]=useState(''),[year,setYear]=useState(null),[artist,setArtist]=useState(null),[timeTo,setTimeTo]=useState(world.years.at(-1)),[selected,setSelected]=useState(null),[customHighlight,setCustomHighlight]=useState([]),[hover,setHover]=useState(null),[discovery,setDiscovery]=useState(null),[modal,setModal]=useState(null),[layers,setLayers]=useState({labels:true,bridges:true,twins:false}),[showLayers,setShowLayers]=useState(false),[ready,setReady]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[tourIndex,setTourIndex]=useState(null),[timelinePlaying,setTimelinePlaying]=useState(false),[favorites,setFavorites]=useState(false),[liveOnly,setLiveOnly]=useState(false),[audioFiles,setAudioFiles]=useState({}),[ambient,setAmbient]=useState(false),[referenceMode,setReferenceMode]=useState('data'),[reducedMotion,setReducedMotion]=useState(()=>readStore('reducedMotion',matchMedia('(prefers-reduced-motion: reduce)').matches)),[previewBusy,setPreviewBusy]=useState(null);
   const [focus,setFocus]=useState({key:'0',target:{all:true}});
   const [pastedData,setPastedData]=useState('');
-  const importRef=useRef(null),audioRef=useRef(null),api=useRef(null),navCounter=useRef(0),sound=useRef(null),audioURLs=useRef([]),noticeTimer=useRef(null),previewRequests=useRef(null);
+  const importRef=useRef(null),audioRef=useRef(null),api=useRef(null),navCounter=useRef(0),sound=useRef(null),audioURLs=useRef([]),noticeTimer=useRef(null),previewRequests=useRef(null),failedPreviewURLs=useRef(new Set());
   const referenceDate=referenceMode==='today'?today():world.referenceDate;
   const song=world.byId.get(selected),twin=song?world.twins.find(t=>t.studio.id===song.id||t.live.id===song.id):null;
   const visibleCount=world.songs.filter(s=>s.year<=timeTo).length;
@@ -65,10 +66,14 @@ export default function App(){
   function exportReport(){const text=`# 回声群岛 · 我的音乐世界\n\n数据：${dataset.name}\n歌曲：${world.songs.length}，艺人：${world.artists}，累计播放：${world.totalPlays}\n数据截止：${world.referenceDate}\n\n## 数据到世界\n最后播放年份 → 章节；艺人 → 群岛；流派 → 地形颜色；累计次数 → 大小；Live 名称 → 双岛。\n\n## 发现\n${world.discoveries.map(d=>`### ${d.title}\n${d.text}\n\n依据：\n${d.evidence.map(e=>`- ${e}`).join('\n')}`).join('\n\n')}\n\n## 我的记忆\n${world.songs.filter(s=>memories[s.id]?.note).map(s=>`### ${s.title} — ${s.artist}\n${memories[s.id].note}`).join('\n\n')||'还没有笔记。'}\n\n## 边界\nlast_played 不是首次播放、年度播放记录或情绪；play_count 是累计次数。颜色和地形是艺术映射。\n`;download('我的回声世界.md',text,'text/markdown; charset=utf-8');announce('音乐世界报告已导出。');}
   async function toggleAmbient(){if(ambient){await sound.current?.close();sound.current=null;setAmbient(false);return;}try{const context=new(window.AudioContext||window.webkitAudioContext)();await context.resume();const gain=context.createGain();gain.gain.value=.018;gain.connect(context.destination);[130.81,196,261.63,329.63].forEach((freq,i)=>{const o=context.createOscillator();o.type='sine';o.frequency.value=freq;const g=context.createGain();g.gain.value=.22;const lfo=context.createOscillator();lfo.frequency.value=.1+i*.025;const amp=context.createGain();amp.gain.value=.14;lfo.connect(amp);amp.connect(g.gain);o.connect(g);g.connect(gain);o.start();lfo.start();});sound.current=context;setAmbient(true);announce('已开启轻柔合成环境音；这不是歌单中的歌曲录音。');}catch{announce('当前浏览器无法启动音频。');}}
   function addAudio(e){const file=e.target.files?.[0];e.target.value='';if(!file||!song)return;if(file.size>150_000_000||(!file.type.startsWith('audio/')&&!/\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(file.name))){announce('请选择不超过 150 MB 的音频文件。');return;}previewRequests.current.cancel();const url=URL.createObjectURL(file);audioURLs.current.push(url);setAudioFiles(prev=>({...prev,[song.id]:{url,name:file.name,type:'local'}}));announce('音频已关联到这首歌，仅在本次会话使用。');}
-  function previewSong(){return previewRequests.current.load(song,audioFiles[song?.id]);}
+  function previewSong(){return previewRequests.current.load(song,audioFiles[song?.id],{excludedURLs:[...failedPreviewURLs.current]});}
   function audioError(id,audio){
-    if(audio?.type==='preview'){setAudioFiles(prev=>{if(prev[id]?.url!==audio.url)return prev;const next={...prev};delete next[id];return next;});announce('试听片段加载失败，已清除失效链接。可重新获取试听或关联本地音频。');}
-    else announce('无法解码此音频，请更换 MP3、WAV 或浏览器支持的格式。');
+    if(audio?.type==='preview'){
+      failedPreviewURLs.current.add(audio.url);
+      const target=world.byId.get(id)||song;
+      const failure={...audio,...missingPreview(target,'找到的试听地址无法播放。重新获取时会跳过该失效地址，继续按原唱、live、翻唱查找。'),storeUrl:audio.storeUrl,trackName:audio.trackName,artistName:audio.artistName,evidence:'曲库返回的试听链接加载失败，当前没有确认可播放的版本。'};
+      setAudioFiles(prev=>prev[id]?.url===audio.url?{...prev,[id]:failure}:prev);announce(failure.hint);
+    }else announce('无法解码此音频，请更换 MP3、WAV 或浏览器支持的格式。');
   }
   const sceneProps={world,timeTo,referenceDate,layers,focus,highlightIds,reducedMotion,onSelect:selectSong,onChapter:y=>navigate({year:y}),onHover:setHover,onBlank:()=>navigate({all:true}),onReady:value=>{api.current=value;queueMicrotask(()=>setReady(true));},onError:message=>{setError(message);setReady(true);}};
   const scope=artist|| (year?`${year} · ${world.chapters.find(c=>c.year===year)?.name}`:null);

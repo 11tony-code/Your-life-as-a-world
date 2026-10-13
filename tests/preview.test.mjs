@@ -1,109 +1,162 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {matchPreview, fetchPreview, createPreviewRequests} from '../src/data/preview.js';
+import {matchPreview,resolvePreview,fetchPreview,createPreviewRequests,createSearchBudget} from '../src/data/preview.js';
+import {previewHint,missingPreview} from '../src/data/preview-report.js';
 
-const song = {id:'radiohead', title:'No Surprises', artist:'Radiohead'};
-const track = (patch = {}) => ({kind:'song',trackId:123,trackName:'No Surprises',artistName:'Radiohead',collectionName:'OK Computer',previewUrl:'https://audio-ssl.itunes.apple.com/preview.m4a',trackViewUrl:'https://music.apple.com/us/album/no-surprises/456?i=123',...patch});
+const song={id:'light',title:'光',artist:'陈粒'};
+const track=(patch={})=>({kind:'song',trackId:123,artistId:77,trackName:'光',artistName:'陳粒',collectionName:'如也',releaseDate:'2015-02-02T12:00:00Z',previewUrl:'https://audio-ssl.itunes.apple.com/p.m4a',trackViewUrl:'https://music.apple.com/hk/album/light/456?i=123',...patch});
+const live=()=>track({trackId:124,trackName:'光 (Live at A)',collectionName:'Live at A'});
+const cover=()=>track({trackId:125,artistId:88,trackName:'光 (Cover: 陳粒)',artistName:'其他演唱者'});
+const lookup=options=>fetchPreview(song,{budget:()=>{},...options});
+const response=results=>({ok:true,json:async()=>({results})});
 
-test('preview requires an exact title and artist, rejecting covers and partial titles', () => {
-  assert.equal(matchPreview({title:'光',artist:'陈粒'}, [track({trackName:'光',artistName:'其他艺人'})]), null);
-  assert.equal(matchPreview({title:'光',artist:'陈粒'}, [track({trackName:'光年之外',artistName:'陈粒'})]), null);
-  const hit = matchPreview({...song,title:'Ｎｏ  Surprises',artist:'radiohead'}, [track()]);
-  assert.equal(hit.trackId,123);
-  assert.equal(hit.artistName,'Radiohead');
-  assert.equal(hit.collectionName,'OK Computer');
-  assert.equal(hit.storeUrl,track().trackViewUrl);
+// These records are controlled fixtures, not claims about real releases.
+test('original wins over live and explicit cover regardless of catalog ordering',()=>{
+  const result=resolvePreview(song,[cover(),live(),track()]);
+  assert.equal(result.version,'original');assert.equal(result.originalFound,true);assert.equal(result.trackId,123);
+  assert.match(result.evidence,/如也.*2015-02-02/);assert.match(result.hint,/已找到.*原唱/);
 });
 
-test('Live and studio previews cannot be substituted for each other', () => {
-  const live = {...song,title:'No Surprises (Live)'};
-  assert.equal(matchPreview(live,[track()]),null);
-  assert.equal(matchPreview(song,[track({trackName:'No Surprises (Live at the BBC)'})]),null);
-  assert.equal(matchPreview(song,[track({collectionName:'Live at the BBC'})]),null);
-  assert.equal(matchPreview(live,[track({trackName:'No Surprises (Live at the BBC)'})]).live,true);
-  assert.equal(matchPreview(live,[track({collectionName:'Live at the BBC'})]).live,true);
-  assert.equal(matchPreview({title:'光（现场版）',artist:'陈粒'},[track({trackName:'光 - 现场版',artistName:'陈粒'})]).live,true);
+test('Chinese traditional/simplified forms match without translating song identities',()=>{
+  const result=matchPreview({title:'歷歷萬鄉',artist:'陈粒'},[track({trackName:'历历万乡'})]);
+  assert.equal(result.version,'original');
+  assert.equal(matchPreview(song,[track({trackName:'光年之外'})]),null);
+  assert.equal(matchPreview(song,[track({trackName:'Hikari'})]),null);
+  assert.equal(matchPreview({title:'Song (Part 1)',artist:'A'},[track({trackName:'Song (Part 2)',artistName:'A'})]),null);
 });
 
-test('semantic subtitles and specified concert descriptors remain part of identity', () => {
-  assert.equal(matchPreview({title:'Song (Part 1)',artist:'Radiohead'},[track({trackName:'Song (Part 2)'})]),null);
-  assert.equal(matchPreview(song,[track({trackName:'No Surprises (Acoustic)'})]),null);
-  assert.equal(matchPreview({...song,title:'No Surprises (Live at A)'},[track({trackName:'No Surprises (Live at B)'})]),null);
-  assert.equal(matchPreview({title:'Live and Let Die',artist:'Radiohead'},[track({trackName:'Live and Let Die'})]).live,false);
+test('a Romanized artist requires independently matched Apple artist ID evidence',()=>{
+  const roman=track({artistName:'Chen Li'});
+  assert.equal(matchPreview(song,[roman]),null);
+  const anchored=track({previewUrl:null,trackId:122});
+  const result=matchPreview(song,[anchored,roman]);
+  assert.equal(result.version,'original');assert.match(result.evidence,/艺人 ID 77/);
+  assert.equal(matchPreview(song,[anchored,track({artistId:99,artistName:'Chen Li'})]),null);
 });
 
-test('preview metadata must include a valid Apple HTTPS store link and audio source', () => {
-  for (const patch of [{previewUrl:''},{trackViewUrl:''},{trackViewUrl:'javascript:alert(1)'},{trackViewUrl:'https://music.apple.com.evil.test/123'},{previewUrl:'http://audio-ssl.itunes.apple.com/p.m4a'},{trackId:0},{kind:'music-video'}]) {
-    assert.equal(matchPreview(song,[track(patch)]),null);
-  }
+test('same-title different artist or language cannot be presumed to be a cover',()=>{
+  const result=resolvePreview(song,[track({artistName:'別人',artistId:88})]);
+  assert.equal(result.version,'unknown');assert.equal(result.url,null);assert.match(result.evidence,/无法确认版本/);
+  assert.ok(result.hint.startsWith('未找到目标歌曲《光》的原唱音频'));
+  assert.equal(resolvePreview(song,[track({artistName:'Hikari',artistId:99,collectionName:'Japanese songs'})]).url,null);
+});
+
+test('live fallback announces missing original before identifying the actual version',()=>{
+  const result=resolvePreview(song,[cover(),live()]);
+  assert.equal(result.version,'live');assert.equal(result.originalFound,false);assert.equal(result.live,true);
+  assert.match(result.hint,/^未找到目标歌曲《光》的原唱音频。.*这是《光》的 live 版/);
+  assert.match(result.evidence,/Live/);
+});
+
+test('cover requires a source credit linking the target artist and names its actual performer',()=>{
+  const result=resolvePreview(song,[cover()]);
+  assert.equal(result.version,'cover');assert.equal(result.artistName,'其他演唱者');
+  assert.match(result.hint,/^未找到目标歌曲《光》的原唱音频。.*翻唱版（演唱者：其他演唱者）/);
+  assert.equal(resolvePreview(song,[track({artistName:'别的艺人',artistId:88,trackName:'光 (Cover: 陈奕迅)'})]).url,null);
+  assert.equal(resolvePreview(song,[track({artistName:'Cover Band',artistId:88})]).url,null);
+  assert.equal(resolvePreview(song,[track({artistName:'别的艺人',artistId:88,collectionName:'Tribute to 非陈粒'})]).url,null);
+  assert.equal(resolvePreview(song,[track({artistName:'别的艺人',artistId:88,collectionName:'Tribute to 陈粒'})]).version,'cover');
+});
+
+test('a live cover remains a cover and cannot outrank the target artist live performance',()=>{
+  const liveCover={...cover(),trackName:'光 (Live) (Cover: 陈粒)'};
+  const result=resolvePreview(song,[liveCover]);assert.equal(result.version,'cover');assert.equal(result.live,true);
+  assert.match(result.hint,/翻唱版.*现场版本/);
+  assert.equal(resolvePreview(song,[liveCover,live()]).version,'live');
+});
+
+test('original priority also applies to a playlist Live title, with explicit studio disclosure',()=>{
+  const result=resolvePreview({...song,title:'光 (Live)'},[live(),track()]);
+  assert.equal(result.version,'original');assert.match(result.hint,/歌单带现场标记.*实际音频为录音室/);
+  const english={title:'Live and Let Die',artist:'A'};
+  assert.equal(resolvePreview(english,[track({trackName:english.title,artistName:'A'})]).version,'original');
+  assert.doesNotMatch(previewHint(english,{version:'original'}),/现场标记/);
+});
+
+test('studio identity rejects explicit cover, ambiguous acoustic metadata and backing tracks',()=>{
+  for(const album of ['Karaoke','Instrumental','Acoustic Sessions','Unplugged','伴奏精选'])assert.equal(resolvePreview(song,[track({collectionName:album})]).url,null);
+  assert.equal(resolvePreview(song,[track({trackName:'光 (Cover)',collectionName:'Cover Sessions'})]).url,null);
+});
+
+test('unavailable original preview permits evidenced fallback and reports missing original audio',()=>{
+  const result=resolvePreview(song,[track({previewUrl:''}),cover()]);assert.equal(result.version,'cover');
+  const none=resolvePreview(song,[track({previewUrl:''})]);assert.equal(none.version,'not_found');assert.equal(none.url,null);
+  assert.match(none.hint,/^未找到目标歌曲《光》的原唱音频。.*没有可用试听地址/);
+  assert.equal(none.storeUrl,track().trackViewUrl);
+});
+
+test('only Apple HTTPS audio/store URLs and valid track metadata can become playable',()=>{
+  for(const patch of [{previewUrl:''},{trackViewUrl:''},{trackViewUrl:'javascript:alert(1)'},{trackViewUrl:'https://music.apple.com.evil.test/123'},{previewUrl:'http://audio-ssl.itunes.apple.com/p.m4a'},{trackId:0},{kind:'music-video'},{artistName:''}])assert.equal(matchPreview(song,[track(patch)]),null);
   assert.equal(matchPreview(song,[null,{}]),null);
+  assert.equal(resolvePreview(song,[track(),live()],{excludedURLs:[track().previewUrl]}).url,null);
 });
 
-test('fallback query still enforces artist/version and sends only the selected identity', async () => {
-  const calls=[];
-  const hit=await fetchPreview(song,{fetchImpl:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>({results:calls.length===1?[track({artistName:'Cover Band'})]:[track()]})};}});
-  assert.equal(hit.trackId,123);
-  assert.equal(calls.length,2);
-  assert.equal(new URL(calls[0].url).searchParams.get('term'),'No Surprises Radiohead');
-  assert.equal(new URL(calls[1].url).searchParams.get('term'),'No Surprises');
-  assert.equal(calls[0].options.cache,'no-store');
+test('Chinese lookup uses HK first, traditional query text and a fresh metadata request',async()=>{
+  const calls=[];const result=await lookup({fetchImpl:async(url,options)=>{calls.push({url,options});return response([track()]);}});
+  assert.equal(result.version,'original');assert.equal(result.storefront,'HK');assert.equal(calls.length,1);
+  assert.equal(new URL(calls[0].url).searchParams.get('country'),'HK');
+  assert.equal(new URL(calls[0].url).searchParams.get('term'),'光 陳粒');assert.equal(calls[0].options.cache,'no-store');
 });
 
-test('preview transport handles malformed data, failed status, cancellation and timeout', async () => {
-  assert.equal(await fetchPreview(song,{fetchImpl:async()=>({ok:true,json:async()=>({})})}),null);
-  await assert.rejects(fetchPreview(song,{fetchImpl:async()=>({ok:false,status:429})}),/HTTP 429/);
-  const controller=new AbortController();controller.abort();let requests=0;
-  await assert.rejects(fetchPreview(song,{signal:controller.signal,fetchImpl:async()=>{requests++;}}),{name:'AbortError'});
-  assert.equal(requests,0);
-  await assert.rejects(fetchPreview(song,{timeoutMs:5,fetchImpl:async(url,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))}),{name:'TimeoutError'});
+test('a later storefront original outranks an earlier live result',async()=>{
+  const calls=[];const result=await lookup({fetchImpl:async url=>{const country=new URL(url).searchParams.get('country');calls.push(country);return response(country==='HK'?[live()]:[track()]);}});
+  assert.equal(result.version,'original');assert.deepEqual(calls,['HK','TW']);
 });
 
-function harness(lookup){
-  const events=[];
-  const requests=createPreviewRequests({lookup,onBusy:id=>events.push(['busy',id]),onResult:(id,hit)=>events.push(['result',id,hit]),onMessage:text=>events.push(['message',text])});
-  return {events,requests};
-}
-
-test('retry performs a fresh lookup even with an existing preview, while local audio is preserved', async () => {
-  let lookups=0;
-  const {events,requests}=harness(async()=>{lookups++;return matchPreview(song,[track()]);});
-  await requests.load(song,{type:'preview',url:'old'});
-  await requests.load(song,{type:'preview',url:'new'});
-  await requests.load(song,{type:'local',url:'blob:local'});
-  assert.equal(lookups,2);
-  assert.equal(events.filter(e=>e[0]==='result').length,2);
-  assert.equal(events.at(-1)[1],null);
+test('title-only original search completes before selecting a lower-priority candidate',async()=>{
+  const calls=[];const result=await lookup({fetchImpl:async url=>{const p=new URL(url).searchParams;calls.push({country:p.get('country'),term:p.get('term')});return response(calls.length===1?[live()]:calls.length===6?[track()]:[]);}});
+  assert.equal(calls.length,6);assert.equal(result.version,'original');assert.equal(calls.at(-1).term,'光');
 });
 
-test('duplicate pending clicks are ignored and obsolete responses cannot update another selection', async () => {
-  const pending=[];
-  const {events,requests}=harness((selected,{signal})=>new Promise(resolve=>pending.push({selected,signal,resolve})));
-  const first=requests.load(song);
-  await requests.load(song);
-  assert.equal(pending.length,1);
-  const other={...song,id:'other'};
-  const second=requests.load(other);
-  assert.equal(pending[0].signal.aborted,true);
-  pending[0].resolve(track());await first;
-  assert.equal(events.some(e=>e[0]==='result'),false);
-  pending[1].resolve(track());await second;
-  assert.deepEqual(events.filter(e=>e[0]==='result').map(e=>e[1]),['other']);
+test('one failed storefront does not prevent another from providing the original',async()=>{
+  let count=0;const result=await lookup({fetchImpl:async()=>{if(++count===1)throw new Error('network');return response([track()]);}});
+  assert.equal(result.version,'original');assert.equal(result.partial,true);assert.equal(count,2);
 });
 
-test('selecting local audio or closing details cancels pending results without an error toast', async () => {
-  let resolve;
-  const {events,requests}=harness(()=>new Promise(done=>{resolve=done;}));
-  const pending=requests.load(song);
-  requests.cancel();resolve(track());await pending;
-  assert.equal(events.some(e=>e[0]==='result'||e[0]==='message'),false);
-  assert.deepEqual(events.at(-1),['busy',null]);
+test('an incomplete search discloses limits and never creates fake links or certainty',async()=>{
+  const result=await lookup({fetchImpl:async()=>({ok:true,json:async()=>({})})});
+  assert.equal(result.version,'not_found');assert.equal(result.partial,true);assert.equal(result.url,null);
+  assert.match(result.hint,/^未找到目标歌曲《光》的原唱音频。.*部分曲库查询失败/);
+  const partial=resolvePreview(song,[live()],{errors:['network']});assert.equal(partial.version,'live');assert.match(partial.hint,/仅限本次/);
 });
 
-test('missing or failed preview clears an obsolete cached link and remains retryable', async () => {
-  let attempts=0;
-  const {events,requests}=harness(async()=>{attempts++;if(attempts===1)throw new Error('network');return attempts===2?null:track();});
-  for(let i=0;i<3;i++)await requests.load(song,{type:'preview'});
-  assert.deepEqual(events.filter(e=>e[0]==='result').map(e=>e[2]),[null,null,track()]);
-  assert.equal(attempts,3);
-  assert.equal(events.filter(e=>e[0]==='busy'&&e[1]===null).length,3);
+test('query budget stops request bursts and resets without caching preview recordings',async()=>{
+  let time=0;const budget=createSearchBudget({limit:2,windowMs:100,now:()=>time});budget();budget();assert.throws(budget,{name:'CatalogRateLimitError'});time=100;budget();
+  let count=0;const result=await lookup({fetchImpl:async()=>{count++;return {ok:false,status:429};}});
+  assert.equal(count,1);assert.equal(result.rateLimited,true);assert.equal(result.url,null);
+  assert.match(result.hint,/过于频繁/);
+});
+
+test('transport honors already-cancelled requests and total timeouts',async()=>{
+  const controller=new AbortController();controller.abort();let calls=0;
+  await assert.rejects(lookup({signal:controller.signal,fetchImpl:async()=>{calls++;}}),{name:'AbortError'});assert.equal(calls,0);
+  await assert.rejects(lookup({timeoutMs:5,fetchImpl:async(url,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))}),{name:'TimeoutError'});
+});
+
+function harness(lookup){const events=[];return {events,requests:createPreviewRequests({lookup,onBusy:id=>events.push(['busy',id]),onResult:(id,result)=>events.push(['result',id,result]),onMessage:text=>events.push(['message',text])})};}
+
+test('retry queries again while preserving explicitly associated local audio',async()=>{
+  let calls=0;const {requests,events}=harness(async()=>{calls++;return resolvePreview(song,[track()]);});
+  await requests.load(song,{type:'preview'});await requests.load(song,{type:'preview'});await requests.load(song,{type:'local'});
+  assert.equal(calls,2);assert.equal(events.filter(e=>e[0]==='result').length,2);
+});
+
+test('duplicate clicks and stale responses cannot overwrite a different song selection',async()=>{
+  const pending=[];const {requests,events}=harness((song,{signal})=>new Promise(resolve=>pending.push({song,signal,resolve})));
+  const first=requests.load(song);await requests.load(song);assert.equal(pending.length,1);
+  const second=requests.load({...song,id:'other'});assert.equal(pending[0].signal.aborted,true);
+  pending[0].resolve(resolvePreview(song,[track()]));await first;assert.equal(events.some(e=>e[0]==='result'),false);
+  pending[1].resolve(resolvePreview(song,[track()]));await second;assert.deepEqual(events.filter(e=>e[0]==='result').map(e=>e[1]),['other']);
+});
+
+test('local association or detail closure cancels results without misleading error notices',async()=>{
+  let resolve;const {requests,events}=harness(()=>new Promise(done=>{resolve=done;}));const pending=requests.load(song);
+  requests.cancel();resolve(resolvePreview(song,[track()]));await pending;
+  assert.equal(events.some(e=>e[0]==='result'||e[0]==='message'),false);assert.deepEqual(events.at(-1),['busy',null]);
+});
+
+test('failure stays visible and retry passes failed audio URLs to the next search',async()=>{
+  let calls=0,options;const {requests,events}=harness(async(song,opts)=>{options=opts;if(++calls===1)throw new Error('network');return missingPreview(song);});
+  await requests.load(song);const failure=events.find(e=>e[0]==='result')[2];assert.equal(failure.version,'not_found');assert.match(failure.hint,/^未找到目标歌曲《光》的原唱音频/);
+  await requests.load(song,failure,{excludedURLs:['https://audio-ssl.itunes.apple.com/bad.m4a']});assert.equal(calls,2);assert.equal(options.excludedURLs.length,1);
 });
